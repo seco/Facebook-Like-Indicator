@@ -1,0 +1,178 @@
+/*
+ *  HTTP over TLS (HTTPS) example sketch
+ *
+ *  This example demonstrates how to use
+ *  WiFiClientSecure class to access HTTPS API.
+ *  We fetch and display the status of
+ *  esp8266/Arduino project continuous integration
+ *  build.
+ *
+ *  Created by Ivan Grokhotkov, 2015.
+ *  This example is in public domain.
+ */
+
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <Adafruit_NeoPixel.h>
+#include <Wire.h>
+#include "SSD1306.h"
+#include "SSD1306Ui.h"
+#include "images.h"
+
+SSD1306 display(0x3c, SDA, SCL);
+SSD1306Ui ui     ( &display );
+
+#define PIXEL_PIN    14    // Digital IO pin connected to the NeoPixels.
+
+#define PIXEL_COUNT 3 //30
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+const char* ssid = "Cytron-R&D";
+const char* password = "f5f4f3f2f1";
+
+const char* host = "graph.facebook.com";
+const int httpsPort = 443;
+unsigned long likes_count;
+unsigned long current_count;
+
+// Use web browser to view and copy
+// SHA1 fingerprint of the certificate
+//const char* fingerprint = "CF 05 98 89 CA FF 8E D8 5E 5C E0 C2 E4 F7 E6 C3 C7 50 DD 5C";
+
+void drawLogo(){
+  display.drawXbm(34, 14, WiFi_Logo_width, WiFi_Logo_height, WiFi_Logo_bits);
+}
+
+void displayLikes(unsigned long likes){
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(64, 22, String(likes) + " Likes");
+}
+
+uint32_t Wheel(byte WheelPos) {
+  WheelPos = 255 - WheelPos;
+  if(WheelPos < 85) {
+    return strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+  }
+  if(WheelPos < 170) {
+    WheelPos -= 85;
+    return strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+  }
+  WheelPos -= 170;
+  return strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+}
+
+void colorWipe(uint32_t c, uint8_t wait) {
+  for(uint16_t i=0; i<strip.numPixels(); i++) {
+    strip.setPixelColor(i, c);
+    strip.show();
+    delay(wait);
+  }
+}
+
+void rainbow(uint8_t wait) {
+  uint16_t i, j;
+
+  for(j=0; j<256; j++) {
+    for(i=0; i<strip.numPixels(); i++) {
+      strip.setPixelColor(i, Wheel((i+j) & 255));
+    }
+    strip.show();
+    delay(wait);
+  }
+}
+
+unsigned long update(){
+  // Use WiFiClientSecure class to create TLS connection
+  WiFiClientSecure client;
+  Serial.print("connecting to ");
+  Serial.println(host);
+  if (!client.connect(host, httpsPort)) {
+    Serial.println("connection failed");
+    return 0;
+  }
+  StaticJsonBuffer<200> jsonBuffer;
+
+  String url = "/v2.5/cytrontech?fields=likes&access_token=CAAICnyQvv40BAHZAZBpIGLKq97XOMLysZAd3rKFQTqZC7qGHuyDGvIZA1VHarriK0yGX9IkWBBEBq54oxWsIZBLkD4UhNR0YZCl8rInMFnupiGMXWmRM4SWz6IlZAPH1FZCwqm6Nragk3Jgk4UQUwESAY62IQhcGQKnfPO5y1pgNDh1TzNMo6O8ZCG";
+  Serial.print("requesting URL: ");
+  Serial.println(url);
+
+  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "User-Agent: CytronTechESPressoLitev2.0\r\n" +
+               "Connection: close\r\n\r\n");
+
+  Serial.println("request sent");
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      Serial.println("headers received");
+      break;
+    }
+  }
+  String line = client.readStringUntil('\n');
+  Serial.println("closing connection");
+
+  JsonObject& root = jsonBuffer.parseObject(line);
+  if (!root.success()) {
+    Serial.println("parseObject() failed");
+    return 0;
+  }
+  unsigned long likes = root["likes"];
+  String id = root["id"];
+
+  Serial.print("Likes: ");Serial.println(likes);
+  Serial.println("==========");
+  Serial.print("ID: ");Serial.println(id);
+  Serial.println("==========");
+
+  displayLikes(likes);
+
+  return likes;
+}
+
+void setup() {
+  strip.begin();
+  strip.show(); // Initialize all pixels to 'off'
+  colorWipe(strip.Color(255, 0, 0), 50);
+  delay(2000);
+  colorWipe(strip.Color(0, 0, 0), 50); 
+  Serial.begin(115200);
+  Serial.println();
+  Serial.print("connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  
+  display.init();
+  display.flipScreenVertically();
+  
+  likes_count = update();
+  delay(1000); 
+  drawLogo();
+}
+
+void loop() {
+  current_count = update();
+
+  if(current_count == 0) return;
+
+  if(current_count > likes_count){
+    rainbow(20);  
+  }
+  
+  if(current_count != likes_count){
+    likes_count = current_count;
+  }
+
+  delay(10000);
+}
