@@ -21,9 +21,11 @@
 #include "SSD1306.h"
 #include "images.h"
 
+#define network_number 20
+
 ESP8266WebServer *ESPertServer;
 int ESPertNumberOfNetworks = 0;
-String ESPertNetworks[10];
+String ESPertNetworks[network_number];
 String ESPertContentHeader="";
 String ESPertContent="";
 String ESPertContentFooter="";
@@ -656,7 +658,7 @@ unsigned long update(){
 void scanNetworks(){
   //scan wifi
   ESPertNumberOfNetworks = WiFi.scanNetworks();
-  if(ESPertNumberOfNetworks > 20) ESPertNumberOfNetworks = 20;
+  if(ESPertNumberOfNetworks > network_number) ESPertNumberOfNetworks = network_number;
   for(int i = 0; i < ESPertNumberOfNetworks; ++i)
     ESPertNetworks[i] = WiFi.SSID(i);
 }
